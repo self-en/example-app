@@ -19,6 +19,20 @@ function logError(message, err) {
   });
 }
 
+function logRequest(req, res, durationMs) {
+  otelLogger.emit({
+    severityNumber: SeverityNumber.INFO,
+    severityText: 'INFO',
+    body: `${req.method} ${req.originalUrl} ${res.statusCode}`,
+    attributes: {
+      'http.request.method': req.method,
+      'url.path': req.originalUrl,
+      'http.response.status_code': res.statusCode,
+      'http.server.request.duration_ms': durationMs,
+    },
+  });
+}
+
 // pg's Pool reads PGHOST/PGUSER/PGPASSWORD/PGDATABASE/PGPORT itself when no
 // config is passed, so either DATABASE_URL or the CloudNativePG-style discrete
 // env vars work without extra code here.
@@ -39,6 +53,16 @@ async function ensureSchema() {
 
 const app = express();
 app.use(express.json());
+
+app.use((req, res, next) => {
+  const start = process.hrtime.bigint();
+  res.on('finish', () => {
+    const durationMs = Number(process.hrtime.bigint() - start) / 1e6;
+    logRequest(req, res, durationMs);
+  });
+  next();
+});
+
 app.use(express.static(path.join(__dirname, '../../frontend')));
 
 app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
