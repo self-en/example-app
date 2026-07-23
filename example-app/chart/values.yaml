@@ -23,15 +23,21 @@ gateway:
 # Secret with keys username/password/uri, created by CloudNativePG in the
 # "postgres" namespace. It is NOT automatically copied into preview-<slug>
 # namespaces (see README "Note" / CLAUDE.md known limitations) - copy it in
-# manually, or the pod will fail to start until you do:
-#   kubectl -n postgres get secret postgres-app -o yaml \
-#     | sed 's/namespace: postgres/namespace: preview-<slug>/' \
+# manually, or the pod will fail to start until you do. Don't just `sed` the
+# namespace in the copied YAML: the secret carries an ownerReference to the
+# CNPG Cluster, which doesn't exist in the target namespace, so Kubernetes
+# garbage-collects the copy within seconds (confirmed - it silently
+# disappears right after `kubectl apply`). Strip metadata down to name+namespace:
+#   kubectl -n postgres get secret postgres-app -o json \
+#     | python3 -c 'import json,sys; d=json.load(sys.stdin); d["metadata"]={"name":d["metadata"]["name"],"namespace":"preview-<slug>"}; print(json.dumps(d))' \
 #     | kubectl apply -f -
 postgres:
   secretName: postgres-app
 
-# dockerconfigjson secret for pulling the (private) GHCR image. Same caveat as
-# postgres.secretName above: not automatically created in preview-<slug>
-# namespaces - see README. Set to "" if the GHCR package is public.
+# dockerconfigjson secret for pulling the GHCR image, only needed while the
+# package is private. Not automatically created in preview-<slug> namespaces -
+# see README. Set to "" once the package is public (kubelet just warns and
+# proceeds if the referenced secret is missing, so leaving this set even after
+# going public is harmless).
 imagePullSecret:
   name: ghcr-pull-secret

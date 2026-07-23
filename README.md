@@ -85,13 +85,18 @@ Service, HTTPRoute) grazie al finalizer `resources-finalizer.argocd.argoproj.io`
   chart (`example-app/chart`) riceve quel tag tramite il parametro helm
   `image.tag` impostato dall'ApplicationSet: ogni preview scarica quindi la
   build fatta dal proprio branch, senza bisogno di un commit di bump del tag.
-  **Il package GHCR deve essere pubblico** (o va configurato un
-  `imagePullSecret` sul cluster) perché k3s riesca a fare il pull. GitHub non
-  offre un modo per cambiare la visibilità di un package via API (solo UI, e
-  se il pulsante "Change visibility" non risponde è un bug/quirk noto della
-  pagina dei package): l'alternativa è creare un secret `docker-registry` nel
-  namespace della preview e referenziarlo tramite `imagePullSecret.name` nel
-  chart (default `ghcr-pull-secret`, vedi `example-app/chart/values.yaml`):
+  **Il package GHCR deve essere pubblico** perché k3s riesca a fare il pull
+  in modo anonimo. GitHub non offre un modo per cambiare la visibilità di un
+  package via API (solo UI: Package settings → Change visibility - se il
+  radio button/pulsante non risponde con "Setting is disabled by organization
+  administrators", è una restrizione anti-abuso di GitHub su org nuove/non
+  verificate, non qualcosa che l'owner può sbloccare da lì; in alcuni casi
+  **Organization → Settings → Packages → "Package creation"** permette di
+  impostare la visibilità di default per i *nuovi* package, il che sblocca il
+  problema se cancelli il package esistente e lo lasci ricreare dalla
+  pipeline). In alternativa, se il package resta privato, c'è un
+  `imagePullSecret` opzionale nel chart (`imagePullSecret.name`, default
+  `ghcr-pull-secret`, vedi `example-app/chart/values.yaml`):
   ```bash
   ssh ubuntu 'export KUBECONFIG=/etc/rancher/k3s/k3s.yaml; \
     kubectl -n preview-<slug> create secret docker-registry ghcr-pull-secret \
@@ -100,13 +105,22 @@ Service, HTTPRoute) grazie al finalizer `resources-finalizer.argocd.argoproj.io`
     --docker-email=noreply@example.com --dry-run=client -o yaml | kubectl apply -f -'
   ```
   Stesso limite del segreto Postgres sotto: non viene creato automaticamente
-  nei namespace `preview-<slug>` futuri, va ripetuto per ogni branch (o va
-  reso pubblico il package, che risolve il problema una volta per tutte).
+  nei namespace `preview-<slug>` futuri, va ripetuto per ogni branch.
 - Il segreto di connessione Postgres (`<POSTGRES_CLUSTER_NAME>-app`, chiavi
   `username`/`password`/`uri`) vive nel namespace `postgres`. Le app di preview
   girano in namespace `preview-<slug>` separati: se un'app deve accedere al
   database, il segreto va copiato/sincronizzato nel suo namespace (fuori scope
-  di questa automazione base).
+  di questa automazione base). **Non basta un `sed` sul namespace nello YAML
+  copiato**: il secret ha un `ownerReference` verso il Cluster CNPG, che non
+  esiste nel namespace di destinazione, quindi Kubernetes lo garbage-collecta
+  pochi secondi dopo l'apply (verificato - sparisce silenziosamente). Va
+  ripulito l'intero blocco `metadata` tranne nome/namespace:
+  ```bash
+  ssh ubuntu 'export KUBECONFIG=/etc/rancher/k3s/k3s.yaml; \
+    kubectl -n postgres get secret postgres-app -o json \
+    | python3 -c "import json,sys; d=json.load(sys.stdin); d[\"metadata\"]={\"name\":d[\"metadata\"][\"name\"],\"namespace\":\"preview-<slug>\"}; print(json.dumps(d))" \
+    | kubectl apply -f -'
+  ```
 - Se il repo GitHub è pubblico e non imposti `GITHUB_TOKEN`, il generator SCM
   di ArgoCD interroga la API di GitHub non autenticato (limite 60 richieste/ora):
   con `requeueAfterSeconds: 180` sono ~20 richieste/ora, entro il limite, ma
