@@ -20,13 +20,26 @@ gateway:
   name: eg
   namespace: envoy-gateway-system
 
-# Postgres connection string, set as a plain env var (no Kubernetes Secret,
-# no per-namespace copying - deliberately simple, not meant to be secure).
-# Overridden per-branch by the ApplicationSet, which reads the real
-# `postgres-app` secret once and passes it straight through as this helm
-# parameter - see setup-k3s/scripts/remote/04-appset.sh.
+# Connection info for the *shared* Postgres cluster - overridden per-branch by
+# the ApplicationSet (see setup-k3s/scripts/remote/04-appset.sh), which reads
+# these once from the real postgres-app/postgres-superuser secrets and passes
+# them straight through as plain helm parameters (no Kubernetes Secret, no
+# per-namespace copying - deliberately simple, not meant to be secure).
+#
+# The chart itself owns per-branch data isolation: a PreSync hook Job
+# (templates/db-create-job.yaml) creates a database named after the release
+# (see _helpers.tpl's example-app.dbName, e.g. preview-main -> preview_main)
+# on first sync, and DATABASE_URL points at that database rather than a
+# shared one. A PreDelete hook Job (templates/db-drop-job.yaml) drops it when
+# the branch (and so this Application) is deleted - both need adminPassword
+# since creating/dropping a database isn't something the app's own user can do.
 postgres:
-  uri: ""
+  host: postgres-rw.postgres.svc.cluster.local
+  port: 5432
+  appUser: app
+  appPassword: ""
+  adminUser: postgres
+  adminPassword: ""
 
 # dockerconfigjson secret for pulling the GHCR image, only needed while the
 # package is private. Not automatically created in preview-<slug> namespaces -

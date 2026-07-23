@@ -5,5 +5,8 @@ metadata:
   namespace: ${POSTGRES_NAMESPACE}
 spec:
   instances: 1
+  # Needed so 04-appset.sh can create/drop a per-branch database as postgres
+  # superuser (see example-app/chart's db-create-job/db-drop-job hooks).
+  enableSuperuserAccess: true
   storage:
     size: 2Gi

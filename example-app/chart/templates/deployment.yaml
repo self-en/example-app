@@ -25,7 +25,5 @@ spec:
         env:
         - name: PORT
           value: "{{ .Values.containerPort }}"
-        {{- if .Values.postgres.uri }}
         - name: DATABASE_URL
-          value: {{ .Values.postgres.uri | quote }}
-        {{- end }}
+          value: "postgresql://{{ .Values.postgres.appUser }}:{{ .Values.postgres.appPassword }}@{{ .Values.postgres.host }}:{{ .Values.postgres.port }}/{{ include "example-app.dbName" . }}"

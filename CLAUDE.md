@@ -114,17 +114,38 @@ newly-created packages). If it has to stay private, `example-app/chart`
 supports an optional `imagePullSecrets` entry (`imagePullSecret.name`, default
 `ghcr-pull-secret`) — that secret still has to be created manually per
 `preview-<slug>` namespace (see README), since it's credential material and
-deliberately NOT baked into the ApplicationSet the way `postgres.uri` is
-below.
+deliberately NOT baked into the ApplicationSet the way Postgres credentials
+are below.
 
-**Postgres access for previews**: `04-appset.sh` reads the real password
-straight out of the `<POSTGRES_CLUSTER_NAME>-app` secret (namespace
-`postgres`) and passes it as a plain `postgres.uri` helm parameter on the
-ApplicationSet (see `manifests/applicationset.yaml.tpl`); the chart injects it
-as a plain-text `DATABASE_URL` env var (`example-app/chart/templates/deployment.yaml`).
-No Kubernetes Secret, no per-namespace copying — deliberately simple/insecure,
-chosen because this is a single-tenant lab VM, not a place credentials need to
-be defended in depth.
+**Postgres access for previews — one isolated database per branch**:
+`04-appset.sh` reads the real app-user and superuser passwords straight out of
+the `<POSTGRES_CLUSTER_NAME>-app`/`-superuser` secrets (namespace `postgres`;
+superuser access requires `enableSuperuserAccess: true` on the CNPG `Cluster`,
+see `manifests/postgres-cluster.yaml`) and passes them as plain
+`postgres.host`/`appUser`/`appPassword`/`adminPassword` helm parameters on the
+ApplicationSet (`manifests/applicationset.yaml.tpl`). The chart
+(`example-app/chart`) does the rest, entirely on its own, with no per-branch
+involvement from the platform scripts:
+- `templates/db-create-job.yaml`, a `PreSync` hook Job, creates a database
+  named `example-app.dbName` (`_helpers.tpl`: `.Release.Name` with `-` → `_`,
+  e.g. `preview-main` → `preview_main`) if it doesn't already exist, owned by
+  the app user.
+- `templates/deployment.yaml` builds `DATABASE_URL` from the same helm values
+  plus that database name — one shared Postgres Cluster, one database per
+  branch, not one Postgres instance per branch (keeps this light on a
+  single-node VM).
+- `templates/db-drop-job.yaml`, a `PreDelete` hook Job, runs
+  `DROP DATABASE ... WITH (FORCE)` for that same database. **PreDelete hooks
+  only fire on genuine Application deletion** (the finalizer-driven teardown
+  that happens when a branch disappears from the ApplicationSet's generator),
+  not on ordinary resource pruning within a still-existing Application's sync
+  — that distinction is exactly why this works for "branch deleted → DB
+  deleted" here.
+
+No Kubernetes Secret anywhere in this path, no per-namespace copying —
+deliberately simple/insecure (including handing every preview's Job the
+Postgres *superuser* password), chosen because this is a single-tenant lab VM,
+not a place credentials need to be defended in depth.
 
 **Networking**: one shared Envoy Gateway (`manifests/gateway.yaml`/
 `gatewayclass.yaml`) listens on port 80 for `*.${DOMAIN_SUFFIX}` and fans out

@@ -42,11 +42,17 @@ spec:
           # preview runs the build produced for its own branch.
           - name: image.tag
             value: '{{.branch | slugify}}'
-          # Read once from the real postgres-app secret by 04-appset.sh and passed
-          # straight through, so every preview gets working DB access without any
-          # per-namespace secret copying.
-          - name: postgres.uri
-            value: '${POSTGRES_URI}'
+          # Read once by 04-appset.sh and passed straight through. The chart uses
+          # these to create/drop a dedicated per-branch database (PreSync/PreDelete
+          # hooks) instead of sharing one database across every preview.
+          - name: postgres.host
+            value: '${POSTGRES_HOST}'
+          - name: postgres.appUser
+            value: '${POSTGRES_APP_USER}'
+          - name: postgres.appPassword
+            value: '${POSTGRES_APP_PASSWORD}'
+          - name: postgres.adminPassword
+            value: '${POSTGRES_ADMIN_PASSWORD}'
       destination:
         server: https://kubernetes.default.svc
         namespace: 'preview-{{.branch | slugify}}'

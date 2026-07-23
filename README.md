@@ -106,16 +106,26 @@ Service, HTTPRoute) grazie al finalizer `resources-finalizer.argocd.argoproj.io`
   ```
   Non viene creato automaticamente nei namespace `preview-<slug>` futuri, va
   ripetuto per ogni branch (irrilevante finché il package resta pubblico).
-- Niente da fare per l'accesso a Postgres delle app di preview: `04-appset.sh`
-  legge una volta la password reale dal secret `<POSTGRES_CLUSTER_NAME>-app`
-  (namespace `postgres`) e la passa come parametro helm (`postgres.uri`)
-  all'ApplicationSet, che il chart inietta come env var `DATABASE_URL` in
-  chiaro (vedi `manifests/applicationset.yaml.tpl` e
-  `example-app/chart/templates/deployment.yaml`) - nessun secret Kubernetes da
-  copiare in ogni namespace `preview-<slug>`. Scelta deliberata (niente
-  Secret, credenziali in chiaro nello spec del Deployment/Application): va
-  bene per un lab/demo su una VM di fiducia, non per un ambiente dove
-  l'accesso al cluster non è di per sé già "trusted".
+- **Ogni preview ha il proprio database**, isolato dalle altre, sullo stesso
+  cluster Postgres condiviso (un database logico per branch, non un'istanza
+  Postgres dedicata - resta leggero su una VM single-node). `04-appset.sh`
+  legge una volta le credenziali reali (`<POSTGRES_CLUSTER_NAME>-app` per
+  l'utente applicativo, `<POSTGRES_CLUSTER_NAME>-superuser` per creare/droppare
+  database - richiede `enableSuperuserAccess: true` sul Cluster CNPG) e le
+  passa come parametri helm all'ApplicationSet (vedi
+  `manifests/applicationset.yaml.tpl`). Il chart (`example-app/chart`):
+  - crea il database `preview_<slug>` al primo sync con un hook `PreSync`
+    (`templates/db-create-job.yaml`) - idempotente, non tocca nulla se esiste già;
+  - lo cancella con un hook `PreDelete` (`templates/db-drop-job.yaml`,
+    `DROP DATABASE ... WITH (FORCE)`, resta idempotente anche se già assente)
+    quando il branch (e quindi l'`Application`) viene cancellato. I `PreDelete`
+    hook di ArgoCD scattano solo sulla cancellazione vera e propria
+    dell'`Application` (quella causata dal finalizer quando il branch sparisce
+    dal generator), non sul pruning di singole risorse durante un sync - è
+    esattamente lo scenario di questa piattaforma.
+  - Stessa scelta "niente sicurezza" già vista sopra per GHCR: credenziali
+    (incluso l'accesso superuser a Postgres) in chiaro nello spec
+    dell'`Application`/nei Job, per semplicità.
 - Se il repo GitHub è pubblico e non imposti `GITHUB_TOKEN`, il generator SCM
   di ArgoCD interroga la API di GitHub non autenticato (limite 60 richieste/ora):
   con `requeueAfterSeconds: 180` sono ~20 richieste/ora, entro il limite, ma

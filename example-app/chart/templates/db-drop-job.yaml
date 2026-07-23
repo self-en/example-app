@@ -1,0 +1,35 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-db-drop
+  annotations:
+    argocd.argoproj.io/hook: PreDelete
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded,HookFailed
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}-db-drop
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: drop-db
+        image: postgres:16-alpine
+        env:
+        - name: PGHOST
+          value: {{ .Values.postgres.host | quote }}
+        - name: PGPORT
+          value: {{ .Values.postgres.port | quote }}
+        - name: PGUSER
+          value: {{ .Values.postgres.adminUser | quote }}
+        - name: PGPASSWORD
+          value: {{ .Values.postgres.adminPassword | quote }}
+        - name: DB_NAME
+          value: {{ include "example-app.dbName" . | quote }}
+        command:
+        - sh
+        - -c
+        - |
+          set -e
+          psql -d postgres -c "DROP DATABASE IF EXISTS \"$DB_NAME\" WITH (FORCE)"
