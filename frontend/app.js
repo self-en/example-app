@@ -2,6 +2,14 @@ const listEl = document.getElementById('todo-list');
 const formEl = document.getElementById('todo-form');
 const inputEl = document.getElementById('todo-input');
 const themeToggleEl = document.getElementById('theme-toggle');
+const clockEl = document.getElementById('clock');
+
+function updateClock() {
+  clockEl.textContent = new Date().toLocaleTimeString();
+}
+
+updateClock();
+setInterval(updateClock, 1000);
 
 function applyTheme(theme) {
   document.documentElement.setAttribute('data-theme', theme);
