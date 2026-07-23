@@ -3,12 +3,7 @@ name: example-app
 on:
   push:
     branches: ["**"]
-    paths:
-      - "example-app/**"
-      - ".github/workflows/example-app.yml"
-  pull_request:
-    paths:
-      - "example-app/**"
+  pull_request: {}
 
 permissions:
   contents: read
@@ -55,7 +50,7 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
-          context: example-app
+          context: .
           push: ${{ github.event_name == 'push' }}
           tags: ${{ steps.tags.outputs.tags }}
           cache-from: type=gha

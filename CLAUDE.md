@@ -4,181 +4,82 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-`self-en` provisions a single-VM k3s cluster that acts as a branch-preview platform:
-push a branch to a configured GitHub repo and ArgoCD automatically deploys it at
-`<branch-slug>.self-en.local`. The platform automation (`setup-k3s/`) is pure
-shell/Helm/Kubernetes manifests; the only actual application is `example-app/`
-(a small Node/Express + Postgres todo app), which exists to exercise the
-platform end-to-end.
+A small Node/Express + Postgres todo app, used as the real demo application
+for the [self-en/infra](https://github.com/self-en/infra) branch-preview
+platform. This repo contains only the app and its own Helm chart — the
+platform automation (k3s, Envoy Gateway, ArgoCD, CloudNativePG, per-branch
+database isolation) lives in `self-en/infra`, not here.
 
-This repo **is itself** the GitHub repo the platform watches (`GITHUB_OWNER=self-en`,
-`GITHUB_REPO=example-app`, matching this repo's own `origin` remote) — it's
-self-referential/dogfooding, not a separate "target" repo.
-
-Everything under `setup-k3s/` is synced to the remote host with `rsync` and executed
-there; nothing runs locally except orchestration (`ssh`/`rsync`).
+`self-en/infra`'s ArgoCD `ApplicationSet` watches every branch of this repo
+and deploys `chart/` from it, passing three things in as Helm parameters at
+sync time (not stored in this repo): the per-branch hostname, the image tag
+matching this branch's own CI build, and Postgres connection info for a
+database dedicated to that branch.
 
 ## Commands
 
 ```bash
-cd setup-k3s
-cp .env.example .env && $EDITOR .env   # set GITHUB_OWNER (must be an Org, see below), GITHUB_REPO, GITHUB_TOKEN, APP_CHART_PATH
-
-./scripts/install.sh                   # rsync setup-k3s/ to $SSH_HOST:~/self-en, then run remote/run-all.sh there
-./scripts/uninstall.sh                 # tear down ApplicationSet/apps, Postgres, Envoy Gateway, ArgoCD, dnsmasq
-./scripts/uninstall.sh --purge-k3s     # same, plus removes k3s itself (destructive, asks for confirmation)
+cd backend && npm install        # only needed for editing outside Docker
+docker build -t example-app:dev .
+docker run --rm -p 3000:3000 -e DATABASE_URL="postgresql://user:pass@host:5432/db" example-app:dev
 ```
 
-There is no build, lint, or test suite — this is infrastructure automation.
-"Testing" a change means re-running `install.sh` against the target VM (every
-remote step is idempotent/re-runnable) and checking state with `kubectl`, e.g.:
+No build/lint/test suite. "Testing" a change means running the container
+locally against a real Postgres (see README) and hitting `/api/health`,
+`/api/todos`, and `/` (frontend). For the full deployed path (branch → CI
+build → ArgoCD sync → live preview), see self-en/infra.
 
-```bash
-ssh ubuntu kubectl get nodes
-ssh ubuntu kubectl -n argocd get applicationset,application
-ssh ubuntu kubectl -n envoy-gateway-system get gateway,gatewayclass
-ssh ubuntu kubectl -n postgres get cluster
-```
-
-To run a single remote step in isolation (e.g. while iterating on one script),
-sync then invoke it directly instead of `run-all.sh`:
-
-```bash
-rsync -az --delete --exclude '.git' setup-k3s/ ubuntu:~/self-en/
-ssh ubuntu 'bash ~/self-en/scripts/remote/03-postgres.sh'
-```
+`helm lint chart` / `helm template chart --set hostname=... --set image.tag=...
+--set postgres.appPassword=... --set postgres.adminPassword=...` to check the
+chart renders before pushing — the ApplicationSet in self-en/infra needs all
+of `hostname`, `image.tag`, `postgres.host`, `postgres.appUser`,
+`postgres.appPassword`, `postgres.adminPassword` to actually work; without
+them the chart still renders (empty defaults in `chart/values.yaml`) but the
+app has no `DATABASE_URL`.
 
 ## Architecture
 
-**Orchestration flow**: `scripts/install.sh` reads `.env`, rsyncs the project to
-the remote host, then runs `scripts/remote/run-all.sh`, which executes these
-steps in order (each is idempotent):
+**Backend** (`backend/src/index.js`): single-file Express app. Connects to
+Postgres via `DATABASE_URL` (or discrete `PGHOST`/`PGUSER`/... env vars, which
+`pg.Pool` reads natively if `DATABASE_URL` is unset), creates the `todos`
+table on startup if missing, and serves `frontend/` as static files from the
+same process/port — deliberately one process, one container, matching the
+chart's single Deployment/Service.
 
-```
-00-k3s.sh → 01-envoy-gateway.sh → dnsmasq.sh → 02-argocd.sh → 03-postgres.sh → 04-appset.sh → 05-db-reconciler.sh
-```
+**Frontend** (`frontend/`): no build step, no framework. `app.js` fetches
+`/api/todos` and does the dark-mode toggle (CSS custom properties in
+`style.css`, switched via `data-theme` on `<html>`, default from
+`prefers-color-scheme`, persisted in `localStorage`).
 
-Each `remote/*.sh` script independently `source`s `setup-k3s/.env`, exports the
-variables it needs, and uses `envsubst` to render the matching template(s) in
-`manifests/*.yaml.tpl` (or plain `.yaml`) before `kubectl apply -f -`. There is
-no shared templating engine — `envsubst` + shell env vars is the whole
-mechanism, so a new install step generally means: a `manifests/*.yaml(.tpl)`
-file, a `scripts/remote/NN-*.sh` step, and an entry in `run-all.sh` (and its
-mirror in `uninstall-all.sh`).
+**Chart** (`chart/`): implements self-en/infra's chart contract (accept
+`hostname`, wire it into an `HTTPRoute` on the shared Gateway named by
+`gateway.name`/`gateway.namespace`). Beyond that minimum:
+- `templates/db-create-job.yaml`, an ArgoCD `PreSync` hook Job, creates a
+  Postgres database named after the release (`.Release.Name` with `-` → `_`,
+  e.g. `preview-main` → `preview_main`, see `templates/_helpers.tpl`) if it
+  doesn't exist yet, owned by `postgres.appUser`. Needs `postgres.adminPassword`
+  since creating a database isn't something the app's own user can do.
+- `templates/deployment.yaml` builds `DATABASE_URL` directly from the
+  `postgres.*` values plus that per-branch database name — plain env var, no
+  Kubernetes Secret (self-en/infra's call, not this repo's — credentials
+  arrive as helm parameters set at sync time, deliberately not secured).
+- Cleanup (dropping that database when the branch is gone) is NOT done here:
+  it can't be, since ArgoCD can't re-render a `PreDelete` hook once the branch
+  is deleted from git. self-en/infra runs a separate reconciler CronJob for
+  that — see its CLAUDE.md if you need the detail.
 
-`scripts/uninstall.sh` mirrors this by rsyncing then running
-`scripts/remote/uninstall-all.sh`, which tears things down in roughly reverse
-order and independently sweeps any leftover `preview-*` namespaces (see
-Known limitation below).
+**Image tags**: `.github/workflows/example-app.yml` pushes
+`ghcr.io/self-en/example-app/example-app` tagged with the short commit sha
+always, and — on push events only — with the branch slug computed by the
+same lowercase/`[^a-z0-9]`→`-` rule ArgoCD's `slugify` uses. That match
+matters: self-en/infra's ApplicationSet sets the chart's `image.tag` to
+`{{.branch | slugify}}`, so it must land on the exact tag this workflow
+pushed for that branch.
 
-**Branch-preview mechanism** (`manifests/applicationset.yaml.tpl`): a single
-ArgoCD `ApplicationSet` uses the `scmProvider.github` generator (`allBranches:
-true`, filtered to `GITHUB_REPO`) to poll for branches every
-`requeueAfterSeconds` (default 180s). For each branch it templates (via
-`goTemplate`/`slugify`) an `Application` named `preview-<branch-slug>` that:
-- deploys the Helm chart at `APP_CHART_PATH` from that branch,
-- passes the per-branch hostname as a Helm parameter (`hostname={{branch-slug}}.${DOMAIN_SUFFIX}`),
-- targets namespace `preview-<branch-slug>` (auto-created via `CreateNamespace=true`),
-- has `resources-finalizer.argocd.argoproj.io` so deleting the branch prunes the
-  Deployment/Service/HTTPRoute/Application together (verified end-to-end per README).
-
-**Chart contract**: any chart deployed by the ApplicationSet (`APP_CHART_PATH`)
-MUST accept a `hostname` value and consume it in an `HTTPRoute` bound to the
-shared Gateway (`gateway.name`/`gateway.namespace`, matching
-`GATEWAY_NAME`/`GATEWAY_NAMESPACE`). `helm/` at the repo root is the generic
-reference/minimal implementation of this contract (Deployment + Service +
-HTTPRoute, nginx by default) — copy and adapt it for other apps rather than
-editing it in place. `example-app/chart` is that same contract adapted for the
-real demo app (`APP_CHART_PATH=example-app/chart` in `.env`).
-
-**example-app CI/CD** (`.github/workflows/example-app.yml` +
-`example-app/chart`): on every push touching `example-app/**`, the workflow
-builds `example-app/Dockerfile` and pushes it to
-`ghcr.io/self-en/example-app/example-app`, tagged with both the short commit
-sha and the pushed branch's slug (computed with the same lowercase/`[^a-z0-9]`→`-`
-rule as ArgoCD's `slugify`). The ApplicationSet passes an extra helm parameter,
-`image.tag={{.branch | slugify}}`, so each branch's preview Deployment pulls
-the image that branch's own CI run just built — no separate "deploy" step or
-image-tag-bump commit needed. On `pull_request` events the workflow only
-builds (to validate the Dockerfile), it doesn't push.
-
-One thing this still depends on: the `ghcr.io/self-en/example-app/example-app`
-package must be public, otherwise k3s can't pull it. GitHub has no API to
-change package visibility (verified: no REST/GraphQL endpoint for it) — only
-the package's own "Change visibility" UI page, which can be blocked by
-GitHub's anti-abuse restrictions on new/unverified orgs ("Setting is disabled
-by organization administrators" — not something the org owner can override
-from that page; check Organization → Settings → Packages → "Package
-creation" for a default-visibility policy instead, which applies to
-newly-created packages). If it has to stay private, `example-app/chart`
-supports an optional `imagePullSecrets` entry (`imagePullSecret.name`, default
-`ghcr-pull-secret`) — that secret still has to be created manually per
-`preview-<slug>` namespace (see README), since it's credential material and
-deliberately NOT baked into the ApplicationSet the way Postgres credentials
-are below.
-
-**Postgres access for previews — one isolated database per branch**:
-`04-appset.sh` reads the real app-user and superuser passwords straight out of
-the `<POSTGRES_CLUSTER_NAME>-app`/`-superuser` secrets (namespace `postgres`;
-superuser access requires `enableSuperuserAccess: true` on the CNPG `Cluster`,
-see `manifests/postgres-cluster.yaml`) and passes them as plain
-`postgres.host`/`appUser`/`appPassword`/`adminPassword` helm parameters on the
-ApplicationSet (`manifests/applicationset.yaml.tpl`). The chart
-(`example-app/chart`) does the rest, entirely on its own, with no per-branch
-involvement from the platform scripts:
-- `templates/db-create-job.yaml`, a `PreSync` hook Job, creates a database
-  named `example-app.dbName` (`_helpers.tpl`: `.Release.Name` with `-` → `_`,
-  e.g. `preview-main` → `preview_main`) if it doesn't already exist, owned by
-  the app user.
-- `templates/deployment.yaml` builds `DATABASE_URL` from the same helm values
-  plus that database name — one shared Postgres Cluster, one database per
-  branch, not one Postgres instance per branch (keeps this light on a
-  single-node VM).
-
-Cleanup on branch deletion is deliberately **not** a `PreDelete` hook in the
-chart, despite that being the obvious first design (and what was tried
-first): ArgoCD has to re-render the chart from git to generate `PreDelete`
-hook manifests, but by the time a branch's `Application` is actually being
-deleted, that branch is already gone from git — ArgoCD fails with "unable to
-resolve '<branch>' to a commit SHA" and the `Application` hangs in
-`Terminating` forever (reproduced live before settling on the current
-approach). Instead, `manifests/db-reconciler.yaml.tpl` installs a `CronJob`
-(applied once by `05-db-reconciler.sh`, in the `postgres` namespace, every 5
-minutes) that lists ArgoCD `Applications` by their `branch` label, derives the
-expected `preview_<slug>` database set from that, and drops
-(`DROP DATABASE ... WITH (FORCE)`) any `preview_*` database with no matching
-Application — reconciling from current cluster state instead of depending on
-the deleted branch's (gone) git content.
-
-No Kubernetes Secret anywhere in this path, no per-namespace copying —
-deliberately simple/insecure (including handing every preview's Job, and the
-reconciler CronJob, the Postgres *superuser* password), chosen because this is
-a single-tenant lab VM, not a place credentials need to be defended in depth.
-
-**Networking**: one shared Envoy Gateway (`manifests/gateway.yaml`/
-`gatewayclass.yaml`) listens on port 80 for `*.${DOMAIN_SUFFIX}` and fans out
-to every preview namespace via per-app `HTTPRoute`s. `dnsmasq.sh` configures
-the VM to resolve `*.${DOMAIN_SUFFIX}` to itself; clients point at the VM via
-`/etc/resolver/<DOMAIN_SUFFIX>` (macOS) so only that domain is affected.
-
-The ArgoCD UI rides the same Gateway: `02-argocd.sh` applies
-`manifests/argocd-httproute.yaml.tpl` right after the Helm install, routing
-`argocd.${DOMAIN_SUFFIX}` to the `argocd-server` Service's port 80 (which
-targets container port 8080 — plain HTTP, since `argocd-values.yaml` sets
-`server.insecure: true` specifically so it can sit behind the Gateway without
-TLS). This mirrors the per-app `HTTPRoute` pattern rather than introducing a
-new mechanism.
-
-**Constraint — `GITHUB_OWNER` must be a GitHub Organization**, not a personal
-account: ArgoCD's `scmProvider.github` generator only calls the "list org
-repos" API and 404s on personal accounts (confirmed by testing).
-
-## Known limitations (from README, don't "fix" without discussing scope)
-
-- Deleting a branch removes the ArgoCD `Application` and its resources, but the
-  `preview-<slug>` namespace (created via `CreateNamespace=true`) is not tracked
-  by ArgoCD and is left behind, empty. `uninstall.sh` sweeps these during full
-  teardown; there's no periodic cleanup during normal operation (out of scope).
-- Without `GITHUB_TOKEN`, the SCM generator polls the GitHub API unauthenticated
-  (60 req/hour limit) — fine at the default 180s requeue interval (~20 req/hour)
-  but private repos require a token regardless.
+**Known gotcha**: pushing new commits to a branch that already has a running
+preview does NOT automatically restart it. The image tag is the same
+(branch slug), so even with `imagePullPolicy: Always` in `values.yaml`,
+ArgoCD sees no drift in the Deployment spec and won't touch already-running
+pods — only new pod (re)creation triggers a fresh pull. A `kubectl rollout
+restart deployment/preview-<slug> -n preview-<slug>` on the target cluster is
+the manual fix; there's no automation for it yet.
