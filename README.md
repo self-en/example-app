@@ -17,8 +17,13 @@ Installa su una singola VM (raggiungibile via `ssh <SSH_HOST>`, default `ubuntu`
 - `rsync`, `ssh` disponibili in locale.
 - Un repository GitHub il cui contenuto, per ogni branch, includa un Helm chart
   nel percorso indicato da `APP_CHART_PATH` che esponga un value `hostname`
-  consumato da un template `HTTPRoute` (vedi `charts/example-app` come
-  riferimento/contratto minimo da copiare e adattare).
+  consumato da un template `HTTPRoute` (vedi `helm/` come riferimento/contratto
+  minimo da copiare e adattare). **Questo stesso repo** soddisfa già il
+  requisito: è il repo GitHub configurato di default (`self-en/example-app`) e
+  contiene sia l'app demo (`example-app/`, con la sua pipeline CI in
+  `.github/workflows/example-app.yml` che builda e pusha l'immagine su GHCR ad
+  ogni push) sia il chart che la deploya (`example-app/chart`,
+  `APP_CHART_PATH=example-app/chart`).
 - **`GITHUB_OWNER` deve essere una GitHub Organization**, non un account utente
   personale: il generator `scmProvider.github` di ArgoCD chiama solo l'API "list
   org repos" e restituisce 404 su un account personale (verificato). Creare una
@@ -27,6 +32,7 @@ Installa su una singola VM (raggiungibile via `ssh <SSH_HOST>`, default `ubuntu`
 ## Setup
 
 ```bash
+cd setup-k3s
 cp .env.example .env
 $EDITOR .env   # imposta GITHUB_OWNER, GITHUB_REPO, GITHUB_TOKEN, APP_CHART_PATH, ...
 ```
@@ -73,6 +79,14 @@ Service, HTTPRoute) grazie al finalizer `resources-finalizer.argocd.argoproj.io`
 
 ## Note
 
+- La pipeline `.github/workflows/example-app.yml` builda `example-app/` e pusha
+  l'immagine su `ghcr.io/self-en/example-app/example-app`, taggata con lo slug
+  del branch (stessa regola di `slugify` usata da ArgoCD per l'hostname). Il
+  chart (`example-app/chart`) riceve quel tag tramite il parametro helm
+  `image.tag` impostato dall'ApplicationSet: ogni preview scarica quindi la
+  build fatta dal proprio branch, senza bisogno di un commit di bump del tag.
+  **Il package GHCR deve essere pubblico** (o va configurato un
+  `imagePullSecret` sul cluster) perché k3s riesca a fare il pull.
 - Il segreto di connessione Postgres (`<POSTGRES_CLUSTER_NAME>-app`, chiavi
   `username`/`password`/`uri`) vive nel namespace `postgres`. Le app di preview
   girano in namespace `preview-<slug>` separati: se un'app deve accedere al

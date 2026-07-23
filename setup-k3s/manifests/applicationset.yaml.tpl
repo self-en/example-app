@@ -37,6 +37,11 @@ spec:
           parameters:
           - name: hostname
             value: '{{.branch | slugify}}.${DOMAIN_SUFFIX}'
+          # Matches the image tag pushed by .github/workflows/example-app.yml for
+          # this branch (computed there with the same slugify rules), so each
+          # preview runs the build produced for its own branch.
+          - name: image.tag
+            value: '{{.branch | slugify}}'
       destination:
         server: https://kubernetes.default.svc
         namespace: 'preview-{{.branch | slugify}}'
