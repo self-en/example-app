@@ -116,6 +116,14 @@ to every preview namespace via per-app `HTTPRoute`s. `dnsmasq.sh` configures
 the VM to resolve `*.${DOMAIN_SUFFIX}` to itself; clients point at the VM via
 `/etc/resolver/<DOMAIN_SUFFIX>` (macOS) so only that domain is affected.
 
+The ArgoCD UI rides the same Gateway: `02-argocd.sh` applies
+`manifests/argocd-httproute.yaml.tpl` right after the Helm install, routing
+`argocd.${DOMAIN_SUFFIX}` to the `argocd-server` Service's port 80 (which
+targets container port 8080 — plain HTTP, since `argocd-values.yaml` sets
+`server.insecure: true` specifically so it can sit behind the Gateway without
+TLS). This mirrors the per-app `HTTPRoute` pattern rather than introducing a
+new mechanism.
+
 **Constraint — `GITHUB_OWNER` must be a GitHub Organization**, not a personal
 account: ArgoCD's `scmProvider.github` generator only calls the "list org
 repos" API and 404s on personal accounts (confirmed by testing).

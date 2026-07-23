@@ -103,10 +103,14 @@ Service, HTTPRoute) grazie al finalizer `resources-finalizer.argocd.argoproj.io`
   namespace `preview-*` residui in fase di disinstallazione completa; per una
   pulizia periodica durante l'uso normale servirebbe un CronJob dedicato (non
   incluso, fuori scope base).
-- Accesso alla UI di ArgoCD (non esposta su Gateway in questa automazione):
-  `ssh -L 8080:localhost:8080 ubuntu kubectl -n argocd port-forward svc/argocd-server 8080:443`
-  poi `https://localhost:8080` (utente `admin`, password in
-  `kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d`).
+- Accesso alla UI di ArgoCD: esposta sul Gateway condiviso su
+  `http://argocd.self-en.local/` (HTTP semplice, coerente col resto della
+  piattaforma - nessuna cifratura, va bene su una VM/LAN di fiducia). Utente
+  `admin`, password in
+  `ssh ubuntu kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d`.
+  In alternativa, senza passare dal DNS: `ssh -L 8080:localhost:8080 ubuntu
+  kubectl -n argocd port-forward svc/argocd-server 8080:443` poi
+  `https://localhost:8080`.
 
 ## Uninstall
 
