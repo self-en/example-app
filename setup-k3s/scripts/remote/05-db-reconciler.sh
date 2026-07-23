@@ -8,6 +8,10 @@ source "$ROOT_DIR/.env"
 export ARGOCD_NAMESPACE POSTGRES_NAMESPACE POSTGRES_CLUSTER_NAME
 
 echo "[db-reconciler] applying CronJob that drops per-branch databases whose Application is gone..."
-envsubst < "$ROOT_DIR/manifests/db-reconciler.yaml.tpl" | kubectl apply -f -
+# Restrict envsubst to these three vars only - the manifest embeds a shell
+# script with its own $-prefixed variables (token, cacert, expected, ...) that
+# unrestricted envsubst would otherwise blank out too.
+envsubst '${ARGOCD_NAMESPACE} ${POSTGRES_NAMESPACE} ${POSTGRES_CLUSTER_NAME}' \
+  < "$ROOT_DIR/manifests/db-reconciler.yaml.tpl" | kubectl apply -f -
 
 kubectl -n "${POSTGRES_NAMESPACE:-postgres}" get cronjob db-reconciler
