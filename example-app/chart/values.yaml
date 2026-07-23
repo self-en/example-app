@@ -2,7 +2,13 @@ image:
   # Built and pushed by .github/workflows/example-app.yml
   repository: ghcr.io/self-en/example-app/example-app
   tag: main
-  pullPolicy: IfNotPresent
+  # The branch-slug tag is mutable - every push to an existing branch rebuilds
+  # the SAME tag with new content. IfNotPresent would leave already-running
+  # pods on whatever digest the node happened to cache first (confirmed: a
+  # push that only changed the frontend didn't show up on the running preview
+  # until pods were force-recreated). Always makes kubelet check the registry
+  # digest on every pod (re)start instead of trusting the local cache.
+  pullPolicy: Always
 
 replicaCount: 1
 containerPort: 3000
