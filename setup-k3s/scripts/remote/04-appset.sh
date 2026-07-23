@@ -7,11 +7,15 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$ROOT_DIR/.env"
 export ARGOCD_NAMESPACE GITHUB_OWNER GITHUB_REPO GITHUB_TOKEN APP_CHART_PATH DOMAIN_SUFFIX
 
-# Baked straight into the ApplicationSet as a plain helm parameter (see
-# manifests/applicationset.yaml.tpl) so every generated preview gets working
-# DB access without copying the postgres-app secret into each namespace.
-POSTGRES_URI="$(kubectl -n "${POSTGRES_NAMESPACE:-postgres}" get secret "${POSTGRES_CLUSTER_NAME:-postgres}-app" -o jsonpath='{.data.uri}' 2>/dev/null | base64 -d || true)"
-export POSTGRES_URI
+# Baked straight into the ApplicationSet as plain helm parameters (see
+# manifests/applicationset.yaml.tpl) so every generated preview can create its
+# own per-branch database (via a PreSync/PreDelete hook in example-app/chart)
+# without copying any secret into each namespace.
+POSTGRES_HOST="${POSTGRES_CLUSTER_NAME:-postgres}-rw.${POSTGRES_NAMESPACE:-postgres}.svc.cluster.local"
+POSTGRES_APP_USER="$(kubectl -n "${POSTGRES_NAMESPACE:-postgres}" get secret "${POSTGRES_CLUSTER_NAME:-postgres}-app" -o jsonpath='{.data.username}' 2>/dev/null | base64 -d || true)"
+POSTGRES_APP_PASSWORD="$(kubectl -n "${POSTGRES_NAMESPACE:-postgres}" get secret "${POSTGRES_CLUSTER_NAME:-postgres}-app" -o jsonpath='{.data.password}' 2>/dev/null | base64 -d || true)"
+POSTGRES_ADMIN_PASSWORD="$(kubectl -n "${POSTGRES_NAMESPACE:-postgres}" get secret "${POSTGRES_CLUSTER_NAME:-postgres}-superuser" -o jsonpath='{.data.password}' 2>/dev/null | base64 -d || true)"
+export POSTGRES_HOST POSTGRES_APP_USER POSTGRES_APP_PASSWORD POSTGRES_ADMIN_PASSWORD
 
 if [[ -z "${GITHUB_TOKEN:-}" ]]; then
   echo "[appset] WARNING: GITHUB_TOKEN is empty - the SCM provider generator will poll" \
