@@ -47,3 +47,4 @@ l'alternativa con `imagePullSecret`.
 Non gestito da questo repo: [self-en/infra](https://github.com/self-en/infra)
 lo fa automaticamente per ogni branch, tramite un ArgoCD `ApplicationSet` che
 punta a `chart/` qui dentro (`APP_CHART_PATH=chart`).
+
