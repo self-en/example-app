@@ -11,6 +11,8 @@ spec:
     metadata:
       labels:
         app: {{ .Release.Name }}
+      annotations:
+        self-en.dev/commit-sha: {{ .Values.commitSha | quote }}
     spec:
       {{- if .Values.imagePullSecret.name }}
       imagePullSecrets:

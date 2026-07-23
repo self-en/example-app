@@ -76,10 +76,12 @@ matters: self-en/infra's ApplicationSet sets the chart's `image.tag` to
 `{{.branch | slugify}}`, so it must land on the exact tag this workflow
 pushed for that branch.
 
-**Known gotcha**: pushing new commits to a branch that already has a running
-preview does NOT automatically restart it. The image tag is the same
-(branch slug), so even with `imagePullPolicy: Always` in `values.yaml`,
-ArgoCD sees no drift in the Deployment spec and won't touch already-running
-pods — only new pod (re)creation triggers a fresh pull. A `kubectl rollout
-restart deployment/preview-<slug> -n preview-<slug>` on the target cluster is
-the manual fix; there's no automation for it yet.
+**Auto-redeploy on every commit**: `image.tag` alone doesn't change between
+commits to the same branch (still just the branch slug), so ArgoCD wouldn't
+otherwise see any Deployment spec drift and would leave already-running pods
+on stale content. self-en/infra's ApplicationSet also passes `commitSha`
+(the scmProvider generator's `{{.sha}}`, which does change every push), and
+`templates/deployment.yaml` stamps it as a pod annotation
+(`self-en.dev/commit-sha`) — so the spec genuinely differs on every commit,
+`selfHeal: true` redeploys automatically, and `imagePullPolicy: Always` then
+pulls the fresh image.

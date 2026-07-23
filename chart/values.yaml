@@ -13,6 +13,14 @@ image:
 replicaCount: 1
 containerPort: 3000
 
+# Set per-branch by the ApplicationSet to the pushed commit's sha (unlike
+# image.tag, this changes on every commit even to an existing branch) and
+# stamped as a pod annotation below - forces the Deployment spec to actually
+# differ on every commit, so ArgoCD's selfHeal redeploys automatically instead
+# of leaving already-running pods on stale content until something else
+# triggers a pod recreation.
+commitSha: ""
+
 service:
   port: 80
 
