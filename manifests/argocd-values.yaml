@@ -1,0 +1,29 @@
+# Lean settings for a resource-constrained single-node cluster, plus plain-HTTP
+# server mode since we expose ArgoCD (optionally) behind Envoy Gateway without TLS.
+configs:
+  params:
+    server.insecure: true
+
+dex:
+  enabled: false
+notifications:
+  enabled: false
+
+server:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+
+repoServer:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+
+applicationSet:
+  enabled: true
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi

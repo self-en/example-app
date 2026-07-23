@@ -1,0 +1,6 @@
+apiVersion: v2
+name: example-app
+description: Reference chart for per-branch preview apps deployed by the branch-previews ApplicationSet
+type: application
+version: 0.1.0
+appVersion: "1.0"
