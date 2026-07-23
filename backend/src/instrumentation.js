@@ -8,6 +8,14 @@
 // interval, both in plain `docker run` local dev and in previews that don't
 // wire up a collector.
 if (process.env.OTEL_EXPORTER_OTLP_ENDPOINT) {
+  const { diag, DiagConsoleLogger, DiagLogLevel } = await import(
+    '@opentelemetry/api'
+  );
+  // Otherwise export failures (wrong endpoint, protocol mismatch, collector
+  // down, ...) are swallowed silently by the SDK's internal no-op diag
+  // logger - nothing would show up in `kubectl logs` to explain missing data.
+  diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.ERROR);
+
   const { NodeSDK } = await import('@opentelemetry/sdk-node');
   const { getNodeAutoInstrumentations } = await import(
     '@opentelemetry/auto-instrumentations-node'
