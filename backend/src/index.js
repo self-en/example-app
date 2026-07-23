@@ -10,26 +10,32 @@ const port = process.env.PORT || 3000;
 // No-op unless instrumentation.js registered a LoggerProvider (i.e.
 // OTEL_EXPORTER_OTLP_ENDPOINT is set), so this is safe to call unconditionally.
 const otelLogger = logs.getLogger('example-app');
-function logError(message, err) {
-  console.error(message, err);
+
+// JSON on stdout (so `kubectl logs`/Loki get a level and structured fields
+// even though this app's OTLP logs currently 404 against Alloy - see
+// self-en/infra's otelcol.receiver.otlp config, which only wires a metrics
+// output) plus the OTel log record, for whenever that pipeline exists.
+function log(severityText, message, attributes = {}) {
+  const line = (severityText === 'ERROR' ? console.error : console.log).bind(console);
+  line(JSON.stringify({ time: new Date().toISOString(), level: severityText.toLowerCase(), msg: message, ...attributes }));
   otelLogger.emit({
-    severityNumber: SeverityNumber.ERROR,
-    severityText: 'ERROR',
-    body: err ? `${message}: ${err.message}` : message,
+    severityNumber: SeverityNumber[severityText],
+    severityText,
+    body: message,
+    attributes,
   });
 }
 
+function logError(message, err) {
+  log('ERROR', message, err ? { error: { name: err.name, message: err.message, stack: err.stack } } : {});
+}
+
 function logRequest(req, res, durationMs) {
-  otelLogger.emit({
-    severityNumber: SeverityNumber.INFO,
-    severityText: 'INFO',
-    body: `${req.method} ${req.originalUrl} ${res.statusCode}`,
-    attributes: {
-      'http.request.method': req.method,
-      'url.path': req.originalUrl,
-      'http.response.status_code': res.statusCode,
-      'http.server.request.duration_ms': durationMs,
-    },
+  log('INFO', `${req.method} ${req.originalUrl} ${res.statusCode}`, {
+    http_request_method: req.method,
+    url_path: req.originalUrl,
+    http_response_status_code: res.statusCode,
+    http_server_request_duration_ms: durationMs,
   });
 }
 
@@ -118,7 +124,7 @@ app.use((err, _req, res, _next) => {
 });
 
 ensureSchema()
-  .then(() => app.listen(port, () => console.log(`example-app listening on ${port}`)))
+  .then(() => app.listen(port, () => log('INFO', 'example-app listening', { port })))
   .catch((err) => {
     logError('failed to connect to postgres', err);
     process.exit(1);
