@@ -12,6 +12,10 @@ spec:
       labels:
         app: {{ .Release.Name }}
     spec:
+      {{- if .Values.imagePullSecret.name }}
+      imagePullSecrets:
+      - name: {{ .Values.imagePullSecret.name }}
+      {{- end }}
       containers:
       - name: app
         image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"

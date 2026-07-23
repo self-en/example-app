@@ -86,7 +86,22 @@ Service, HTTPRoute) grazie al finalizer `resources-finalizer.argocd.argoproj.io`
   `image.tag` impostato dall'ApplicationSet: ogni preview scarica quindi la
   build fatta dal proprio branch, senza bisogno di un commit di bump del tag.
   **Il package GHCR deve essere pubblico** (o va configurato un
-  `imagePullSecret` sul cluster) perché k3s riesca a fare il pull.
+  `imagePullSecret` sul cluster) perché k3s riesca a fare il pull. GitHub non
+  offre un modo per cambiare la visibilità di un package via API (solo UI, e
+  se il pulsante "Change visibility" non risponde è un bug/quirk noto della
+  pagina dei package): l'alternativa è creare un secret `docker-registry` nel
+  namespace della preview e referenziarlo tramite `imagePullSecret.name` nel
+  chart (default `ghcr-pull-secret`, vedi `example-app/chart/values.yaml`):
+  ```bash
+  ssh ubuntu 'export KUBECONFIG=/etc/rancher/k3s/k3s.yaml; \
+    kubectl -n preview-<slug> create secret docker-registry ghcr-pull-secret \
+    --docker-server=ghcr.io --docker-username=<github-username> \
+    --docker-password="<PAT con scope read:packages>" \
+    --docker-email=noreply@example.com --dry-run=client -o yaml | kubectl apply -f -'
+  ```
+  Stesso limite del segreto Postgres sotto: non viene creato automaticamente
+  nei namespace `preview-<slug>` futuri, va ripetuto per ogni branch (o va
+  reso pubblico il package, che risolve il problema una volta per tutte).
 - Il segreto di connessione Postgres (`<POSTGRES_CLUSTER_NAME>-app`, chiavi
   `username`/`password`/`uri`) vive nel namespace `postgres`. Le app di preview
   girano in namespace `preview-<slug>` separati: se un'app deve accedere al

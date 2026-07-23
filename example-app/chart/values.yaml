@@ -29,3 +29,9 @@ gateway:
 #     | kubectl apply -f -
 postgres:
   secretName: postgres-app
+
+# dockerconfigjson secret for pulling the (private) GHCR image. Same caveat as
+# postgres.secretName above: not automatically created in preview-<slug>
+# namespaces - see README. Set to "" if the GHCR package is public.
+imagePullSecret:
+  name: ghcr-pull-secret
