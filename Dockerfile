@@ -11,4 +11,4 @@ COPY frontend ./frontend
 ENV PORT=3000
 EXPOSE 3000
 
-CMD ["node", "backend/src/index.js"]
+CMD ["node", "--import", "./backend/src/instrumentation.js", "backend/src/index.js"]

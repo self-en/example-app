@@ -64,3 +64,11 @@ postgres:
 # going public is harmless).
 imagePullSecret:
   name: ghcr-pull-secret
+
+# OpenTelemetry (metrics + logs; tracing is intentionally not enabled - see
+# backend/src/instrumentation.js). endpoint empty (the default) means the app
+# doesn't start the SDK at all - self-en/infra sets this per-branch once a
+# collector exists, same "unset by default, wired by the ApplicationSet"
+# pattern as postgres.* above.
+otel:
+  endpoint: ""

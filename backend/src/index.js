@@ -2,9 +2,22 @@ import express from 'express';
 import { Pool } from 'pg';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { logs, SeverityNumber } from '@opentelemetry/api-logs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const port = process.env.PORT || 3000;
+
+// No-op unless instrumentation.js registered a LoggerProvider (i.e.
+// OTEL_EXPORTER_OTLP_ENDPOINT is set), so this is safe to call unconditionally.
+const otelLogger = logs.getLogger('example-app');
+function logError(message, err) {
+  console.error(message, err);
+  otelLogger.emit({
+    severityNumber: SeverityNumber.ERROR,
+    severityText: 'ERROR',
+    body: err ? `${message}: ${err.message}` : message,
+  });
+}
 
 // pg's Pool reads PGHOST/PGUSER/PGPASSWORD/PGDATABASE/PGPORT itself when no
 // config is passed, so either DATABASE_URL or the CloudNativePG-style discrete
@@ -76,13 +89,13 @@ app.delete('/api/todos/:id', async (req, res, next) => {
 });
 
 app.use((err, _req, res, _next) => {
-  console.error(err);
+  logError('request failed', err);
   res.status(500).json({ error: 'internal error' });
 });
 
 ensureSchema()
   .then(() => app.listen(port, () => console.log(`example-app listening on ${port}`)))
   .catch((err) => {
-    console.error('failed to connect to postgres', err);
+    logError('failed to connect to postgres', err);
     process.exit(1);
   });

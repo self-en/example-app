@@ -29,3 +29,9 @@ spec:
           value: "{{ .Values.containerPort }}"
         - name: DATABASE_URL
           value: "postgresql://{{ .Values.postgres.appUser }}:{{ .Values.postgres.appPassword }}@{{ .Values.postgres.host }}:{{ .Values.postgres.port }}/{{ include "example-app.dbName" . }}"
+        {{- if .Values.otel.endpoint }}
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: {{ .Values.otel.endpoint | quote }}
+        - name: OTEL_SERVICE_NAME
+          value: {{ .Release.Name | quote }}
+        {{- end }}
