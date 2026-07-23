@@ -16,6 +16,12 @@ sync time (not stored in this repo): the per-branch hostname, the image tag
 matching this branch's own CI build, and Postgres connection info for a
 database dedicated to that branch.
 
+## Workflow
+
+Ogni volta che viene richiesta una modifica al codice, crea prima un nuovo
+branch (a partire da `main` aggiornato) e lavora lì — non committare mai
+direttamente su `main`.
+
 ## Commands
 
 ```bash
