@@ -29,6 +29,27 @@ docker run --rm -p 3000:3000 -e DATABASE_URL="postgresql://user:pass@host:5432/d
 processo esce all'avvio (fallisce la connessione), stessa logica usata in
 produzione dalla piattaforma di preview.
 
+## Observability (OpenTelemetry)
+
+L'app supporta metriche e log via OpenTelemetry (nessuna traccia - vedi
+`backend/src/instrumentation.js`). Disabilitato di default: viene avviato
+solo se è impostata `OTEL_EXPORTER_OTLP_ENDPOINT` (endpoint HTTP di un OTLP
+collector, es. `http://otel-collector:4318`), per non generare errori di
+connessione a vuoto in locale o in preview senza collector configurato.
+
+```bash
+docker run --rm -p 3000:3000 \
+  -e DATABASE_URL="postgresql://user:pass@host:5432/db" \
+  -e OTEL_EXPORTER_OTLP_ENDPOINT="http://otel-collector:4318" \
+  -e OTEL_SERVICE_NAME="example-app" \
+  example-app:dev
+```
+
+`OTEL_SERVICE_NAME` è opzionale (default `example-app`). Il chart espone lo
+stesso comportamento tramite `otel.endpoint` in `chart/values.yaml` (vuoto di
+default, impostato per branch da self-en/infra una volta disponibile un
+collector).
+
 ## CI/CD
 
 `.github/workflows/example-app.yml` builda e pusha l'immagine su
