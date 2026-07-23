@@ -126,7 +126,11 @@ Service, HTTPRoute) grazie al finalizer `resources-finalizer.argocd.argoproj.io`
   (`manifests/db-reconciler.yaml.tpl`, ogni 5 minuti, installato una volta da
   `05-db-reconciler.sh`) che confronta i database `preview_*` esistenti con le
   `Application` ArgoCD ancora presenti (via label `branch`) e droppa (`WITH
-  (FORCE)`) quelli senza più un'`Application` corrispondente.
+  (FORCE)`) quelli senza più un'`Application` corrispondente - **verificato
+  end-to-end**: creato un branch di prova, confermato il database isolato
+  (`preview_<slug>`), cancellato il branch (l'`Application` si elimina pulita,
+  a differenza del tentativo con `PreDelete`), triggerato il CronJob e
+  confermato che il database orfano viene droppato.
 
   Stessa scelta "niente sicurezza" già vista sopra per GHCR: credenziali
   (incluso l'accesso superuser a Postgres) in chiaro nello spec
