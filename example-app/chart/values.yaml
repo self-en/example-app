@@ -26,13 +26,15 @@ gateway:
 # them straight through as plain helm parameters (no Kubernetes Secret, no
 # per-namespace copying - deliberately simple, not meant to be secure).
 #
-# The chart itself owns per-branch data isolation: a PreSync hook Job
+# The chart owns per-branch data isolation on the way in: a PreSync hook Job
 # (templates/db-create-job.yaml) creates a database named after the release
 # (see _helpers.tpl's example-app.dbName, e.g. preview-main -> preview_main)
 # on first sync, and DATABASE_URL points at that database rather than a
-# shared one. A PreDelete hook Job (templates/db-drop-job.yaml) drops it when
-# the branch (and so this Application) is deleted - both need adminPassword
-# since creating/dropping a database isn't something the app's own user can do.
+# shared one - needs adminPassword since creating a database isn't something
+# the app's own user can do. Cleanup on the way out is NOT a PreDelete hook
+# here: ArgoCD can't render hook manifests once the branch is already gone
+# from git, so a cluster-side CronJob (setup-k3s/manifests/db-reconciler.yaml.tpl)
+# drops any preview_<slug> database whose Application no longer exists instead.
 postgres:
   host: postgres-rw.postgres.svc.cluster.local
   port: 5432

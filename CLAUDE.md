@@ -55,7 +55,7 @@ the remote host, then runs `scripts/remote/run-all.sh`, which executes these
 steps in order (each is idempotent):
 
 ```
-00-k3s.sh → 01-envoy-gateway.sh → dnsmasq.sh → 02-argocd.sh → 03-postgres.sh → 04-appset.sh
+00-k3s.sh → 01-envoy-gateway.sh → dnsmasq.sh → 02-argocd.sh → 03-postgres.sh → 04-appset.sh → 05-db-reconciler.sh
 ```
 
 Each `remote/*.sh` script independently `source`s `setup-k3s/.env`, exports the
@@ -134,18 +134,26 @@ involvement from the platform scripts:
   plus that database name — one shared Postgres Cluster, one database per
   branch, not one Postgres instance per branch (keeps this light on a
   single-node VM).
-- `templates/db-drop-job.yaml`, a `PreDelete` hook Job, runs
-  `DROP DATABASE ... WITH (FORCE)` for that same database. **PreDelete hooks
-  only fire on genuine Application deletion** (the finalizer-driven teardown
-  that happens when a branch disappears from the ApplicationSet's generator),
-  not on ordinary resource pruning within a still-existing Application's sync
-  — that distinction is exactly why this works for "branch deleted → DB
-  deleted" here.
+
+Cleanup on branch deletion is deliberately **not** a `PreDelete` hook in the
+chart, despite that being the obvious first design (and what was tried
+first): ArgoCD has to re-render the chart from git to generate `PreDelete`
+hook manifests, but by the time a branch's `Application` is actually being
+deleted, that branch is already gone from git — ArgoCD fails with "unable to
+resolve '<branch>' to a commit SHA" and the `Application` hangs in
+`Terminating` forever (reproduced live before settling on the current
+approach). Instead, `manifests/db-reconciler.yaml.tpl` installs a `CronJob`
+(applied once by `05-db-reconciler.sh`, in the `postgres` namespace, every 5
+minutes) that lists ArgoCD `Applications` by their `branch` label, derives the
+expected `preview_<slug>` database set from that, and drops
+(`DROP DATABASE ... WITH (FORCE)`) any `preview_*` database with no matching
+Application — reconciling from current cluster state instead of depending on
+the deleted branch's (gone) git content.
 
 No Kubernetes Secret anywhere in this path, no per-namespace copying —
-deliberately simple/insecure (including handing every preview's Job the
-Postgres *superuser* password), chosen because this is a single-tenant lab VM,
-not a place credentials need to be defended in depth.
+deliberately simple/insecure (including handing every preview's Job, and the
+reconciler CronJob, the Postgres *superuser* password), chosen because this is
+a single-tenant lab VM, not a place credentials need to be defended in depth.
 
 **Networking**: one shared Envoy Gateway (`manifests/gateway.yaml`/
 `gatewayclass.yaml`) listens on port 80 for `*.${DOMAIN_SUFFIX}` and fans out

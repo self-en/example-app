@@ -27,6 +27,10 @@ done
 echo "[uninstall] removing any leftover preview-* namespaces..."
 kubectl get ns -o name 2>/dev/null | grep '^namespace/preview-' | xargs -r kubectl delete --wait=true --timeout=120s || true
 
+echo "[uninstall] deleting db-reconciler CronJob/RBAC..."
+kubectl -n "${ARGOCD_NAMESPACE:-argocd}" delete rolebinding db-reconciler-applications-reader --ignore-not-found
+kubectl delete clusterrole db-reconciler-applications-reader --ignore-not-found
+
 echo "[uninstall] deleting Postgres Cluster + CloudNativePG operator..."
 kubectl -n "${POSTGRES_NAMESPACE:-postgres}" delete cluster "${POSTGRES_CLUSTER_NAME:-postgres}" --ignore-not-found
 helm uninstall cnpg -n cnpg-system >/dev/null 2>&1 || true

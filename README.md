@@ -115,17 +115,22 @@ Service, HTTPRoute) grazie al finalizer `resources-finalizer.argocd.argoproj.io`
   passa come parametri helm all'ApplicationSet (vedi
   `manifests/applicationset.yaml.tpl`). Il chart (`example-app/chart`):
   - crea il database `preview_<slug>` al primo sync con un hook `PreSync`
-    (`templates/db-create-job.yaml`) - idempotente, non tocca nulla se esiste già;
-  - lo cancella con un hook `PreDelete` (`templates/db-drop-job.yaml`,
-    `DROP DATABASE ... WITH (FORCE)`, resta idempotente anche se già assente)
-    quando il branch (e quindi l'`Application`) viene cancellato. I `PreDelete`
-    hook di ArgoCD scattano solo sulla cancellazione vera e propria
-    dell'`Application` (quella causata dal finalizer quando il branch sparisce
-    dal generator), non sul pruning di singole risorse durante un sync - è
-    esattamente lo scenario di questa piattaforma.
-  - Stessa scelta "niente sicurezza" già vista sopra per GHCR: credenziali
-    (incluso l'accesso superuser a Postgres) in chiaro nello spec
-    dell'`Application`/nei Job, per semplicità.
+    (`templates/db-create-job.yaml`) - idempotente, non tocca nulla se esiste già.
+
+  La cancellazione **non** è un hook `PreDelete` nel chart: un `PreDelete`
+  richiede ad ArgoCD di rigenerare i manifest dell'hook al momento della
+  cancellazione, ma a quel punto il branch è già sparito da git e ArgoCD non
+  riesce a risolvere `targetRevision` a un commit ("unable to resolve
+  '<branch>' to a commit SHA" - **verificato**, l'`Application` resta bloccata
+  in `Terminating` per sempre). La pulizia è invece un `CronJob`
+  (`manifests/db-reconciler.yaml.tpl`, ogni 5 minuti, installato una volta da
+  `05-db-reconciler.sh`) che confronta i database `preview_*` esistenti con le
+  `Application` ArgoCD ancora presenti (via label `branch`) e droppa (`WITH
+  (FORCE)`) quelli senza più un'`Application` corrispondente.
+
+  Stessa scelta "niente sicurezza" già vista sopra per GHCR: credenziali
+  (incluso l'accesso superuser a Postgres) in chiaro nello spec
+  dell'`Application`/nei Job/nel CronJob, per semplicità.
 - Se il repo GitHub è pubblico e non imposti `GITHUB_TOKEN`, il generator SCM
   di ArgoCD interroga la API di GitHub non autenticato (limite 60 richieste/ora):
   con `requeueAfterSeconds: 180` sono ~20 richieste/ora, entro il limite, ma
