@@ -7,6 +7,12 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$ROOT_DIR/.env"
 export ARGOCD_NAMESPACE GITHUB_OWNER GITHUB_REPO GITHUB_TOKEN APP_CHART_PATH DOMAIN_SUFFIX
 
+# Baked straight into the ApplicationSet as a plain helm parameter (see
+# manifests/applicationset.yaml.tpl) so every generated preview gets working
+# DB access without copying the postgres-app secret into each namespace.
+POSTGRES_URI="$(kubectl -n "${POSTGRES_NAMESPACE:-postgres}" get secret "${POSTGRES_CLUSTER_NAME:-postgres}-app" -o jsonpath='{.data.uri}' 2>/dev/null | base64 -d || true)"
+export POSTGRES_URI
+
 if [[ -z "${GITHUB_TOKEN:-}" ]]; then
   echo "[appset] WARNING: GITHUB_TOKEN is empty - the SCM provider generator will poll" \
        "the GitHub API unauthenticated (60 req/hour) and private repos won't work." >&2

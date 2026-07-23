@@ -42,6 +42,11 @@ spec:
           # preview runs the build produced for its own branch.
           - name: image.tag
             value: '{{.branch | slugify}}'
+          # Read once from the real postgres-app secret by 04-appset.sh and passed
+          # straight through, so every preview gets working DB access without any
+          # per-namespace secret copying.
+          - name: postgres.uri
+            value: '${POSTGRES_URI}'
       destination:
         server: https://kubernetes.default.svc
         namespace: 'preview-{{.branch | slugify}}'

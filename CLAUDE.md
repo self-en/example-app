@@ -102,13 +102,29 @@ the image that branch's own CI run just built — no separate "deploy" step or
 image-tag-bump commit needed. On `pull_request` events the workflow only
 builds (to validate the Dockerfile), it doesn't push.
 
-Two things this depends on that are NOT automated (matches the existing
-"copy the Postgres secret manually" limitation below in spirit):
-- The `ghcr.io/self-en/example-app/example-app` package must be public (or the
-  cluster needs an `imagePullSecret`), otherwise k3s can't pull it.
-- `example-app/chart`'s Deployment wires `DATABASE_URL` from a secret named
-  `postgres-app` *in the same namespace* — which, per the limitation below,
-  isn't there by default in a fresh `preview-<slug>` namespace.
+One thing this still depends on: the `ghcr.io/self-en/example-app/example-app`
+package must be public, otherwise k3s can't pull it. GitHub has no API to
+change package visibility (verified: no REST/GraphQL endpoint for it) — only
+the package's own "Change visibility" UI page, which can be blocked by
+GitHub's anti-abuse restrictions on new/unverified orgs ("Setting is disabled
+by organization administrators" — not something the org owner can override
+from that page; check Organization → Settings → Packages → "Package
+creation" for a default-visibility policy instead, which applies to
+newly-created packages). If it has to stay private, `example-app/chart`
+supports an optional `imagePullSecrets` entry (`imagePullSecret.name`, default
+`ghcr-pull-secret`) — that secret still has to be created manually per
+`preview-<slug>` namespace (see README), since it's credential material and
+deliberately NOT baked into the ApplicationSet the way `postgres.uri` is
+below.
+
+**Postgres access for previews**: `04-appset.sh` reads the real password
+straight out of the `<POSTGRES_CLUSTER_NAME>-app` secret (namespace
+`postgres`) and passes it as a plain `postgres.uri` helm parameter on the
+ApplicationSet (see `manifests/applicationset.yaml.tpl`); the chart injects it
+as a plain-text `DATABASE_URL` env var (`example-app/chart/templates/deployment.yaml`).
+No Kubernetes Secret, no per-namespace copying — deliberately simple/insecure,
+chosen because this is a single-tenant lab VM, not a place credentials need to
+be defended in depth.
 
 **Networking**: one shared Envoy Gateway (`manifests/gateway.yaml`/
 `gatewayclass.yaml`) listens on port 80 for `*.${DOMAIN_SUFFIX}` and fans out
@@ -134,10 +150,6 @@ repos" API and 404s on personal accounts (confirmed by testing).
   `preview-<slug>` namespace (created via `CreateNamespace=true`) is not tracked
   by ArgoCD and is left behind, empty. `uninstall.sh` sweeps these during full
   teardown; there's no periodic cleanup during normal operation (out of scope).
-- The Postgres connection secret (`${POSTGRES_CLUSTER_NAME}-app`) lives in the
-  `postgres` namespace only; apps needing DB access must have it copied into
-  their own `preview-<slug>` namespace manually (out of scope for the base
-  automation).
 - Without `GITHUB_TOKEN`, the SCM generator polls the GitHub API unauthenticated
   (60 req/hour limit) — fine at the default 180s requeue interval (~20 req/hour)
   but private repos require a token regardless.
