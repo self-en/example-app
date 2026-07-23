@@ -1,3 +1,57 @@
+:root {
+  --bg: #f5f5f7;
+  --surface: #fff;
+  --text: #1d1d1f;
+  --text-muted: #86868b;
+  --border: #d2d2d7;
+  --border-subtle: #f0f0f0;
+  --accent: #0071e3;
+  --accent-hover: #0077ed;
+  --danger: #ff3b30;
+  --shadow: rgba(0, 0, 0, 0.1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1c1c1e;
+    --surface: #2c2c2e;
+    --text: #f5f5f7;
+    --text-muted: #98989d;
+    --border: #48484a;
+    --border-subtle: #3a3a3c;
+    --accent: #0a84ff;
+    --accent-hover: #409cff;
+    --danger: #ff453a;
+    --shadow: rgba(0, 0, 0, 0.3);
+  }
+}
+
+:root[data-theme="light"] {
+  --bg: #f5f5f7;
+  --surface: #fff;
+  --text: #1d1d1f;
+  --text-muted: #86868b;
+  --border: #d2d2d7;
+  --border-subtle: #f0f0f0;
+  --accent: #0071e3;
+  --accent-hover: #0077ed;
+  --danger: #ff3b30;
+  --shadow: rgba(0, 0, 0, 0.1);
+}
+
+:root[data-theme="dark"] {
+  --bg: #1c1c1e;
+  --surface: #2c2c2e;
+  --text: #f5f5f7;
+  --text-muted: #98989d;
+  --border: #48484a;
+  --border-subtle: #3a3a3c;
+  --accent: #0a84ff;
+  --accent-hover: #409cff;
+  --danger: #ff453a;
+  --shadow: rgba(0, 0, 0, 0.3);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -9,23 +63,43 @@ body {
   justify-content: center;
   align-items: flex-start;
   padding: 3rem 1rem;
-  background: #f5f5f7;
+  background: var(--bg);
   font-family: system-ui, -apple-system, sans-serif;
-  color: #1d1d1f;
+  color: var(--text);
+  transition: background 0.2s, color 0.2s;
 }
 
 main {
   width: 100%;
   max-width: 480px;
-  background: #fff;
+  background: var(--surface);
   border-radius: 12px;
   padding: 1.5rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 1px 3px var(--shadow);
+  transition: background 0.2s;
+}
+
+.header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
 }
 
 h1 {
-  margin: 0 0 1rem;
+  margin: 0;
   font-size: 1.5rem;
+}
+
+#theme-toggle {
+  background: none;
+  padding: 0.25rem 0.5rem;
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+#theme-toggle:hover {
+  background: var(--border-subtle);
 }
 
 #todo-form {
@@ -37,23 +111,25 @@ h1 {
 #todo-input {
   flex: 1;
   padding: 0.5rem 0.75rem;
-  border: 1px solid #d2d2d7;
+  border: 1px solid var(--border);
   border-radius: 8px;
   font-size: 1rem;
+  background: var(--surface);
+  color: var(--text);
 }
 
 button {
   padding: 0.5rem 1rem;
   border: none;
   border-radius: 8px;
-  background: #0071e3;
+  background: var(--accent);
   color: #fff;
   font-size: 1rem;
   cursor: pointer;
 }
 
 button:hover {
-  background: #0077ed;
+  background: var(--accent-hover);
 }
 
 #todo-list {
@@ -67,7 +143,7 @@ button:hover {
   align-items: center;
   gap: 0.75rem;
   padding: 0.5rem 0;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 #todo-list li span {
@@ -76,16 +152,16 @@ button:hover {
 
 #todo-list li.completed span {
   text-decoration: line-through;
-  color: #86868b;
+  color: var(--text-muted);
 }
 
 .delete {
   background: none;
-  color: #86868b;
+  color: var(--text-muted);
   padding: 0.25rem 0.5rem;
 }
 
 .delete:hover {
-  background: #f5f5f7;
-  color: #ff3b30;
+  background: var(--border-subtle);
+  color: var(--danger);
 }

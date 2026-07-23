@@ -1,6 +1,21 @@
 const listEl = document.getElementById('todo-list');
 const formEl = document.getElementById('todo-form');
 const inputEl = document.getElementById('todo-input');
+const themeToggleEl = document.getElementById('theme-toggle');
+
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  themeToggleEl.textContent = theme === 'dark' ? '☀️' : '🌙';
+}
+
+const storedTheme = localStorage.getItem('theme');
+applyTheme(storedTheme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+
+themeToggleEl.addEventListener('click', () => {
+  const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+  localStorage.setItem('theme', next);
+  applyTheme(next);
+});
 
 async function loadTodos() {
   const res = await fetch('/api/todos');
