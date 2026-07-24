@@ -35,7 +35,3 @@ spec:
         - name: OTEL_SERVICE_NAME
           value: {{ .Release.Name | quote }}
         {{- end }}
-        {{- if .Values.claudeCodeOAuthToken }}
-        - name: CLAUDE_CODE_OAUTH_TOKEN
-          value: {{ .Values.claudeCodeOAuthToken | quote }}
-        {{- end }}
