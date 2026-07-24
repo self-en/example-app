@@ -1,6 +1,8 @@
 const listEl = document.getElementById('todo-list');
 const formEl = document.getElementById('todo-form');
 const inputEl = document.getElementById('todo-input');
+const tagsInputEl = document.getElementById('tags-input');
+const tagFilterEl = document.getElementById('tag-filter');
 const themeToggleEl = document.getElementById('theme-toggle');
 const clockEl = document.getElementById('clock');
 
@@ -26,8 +28,33 @@ themeToggleEl.addEventListener('click', () => {
 });
 
 async function loadTodos() {
-  const res = await fetch('/api/todos');
+  const tag = tagFilterEl.value;
+  const res = await fetch(`/api/todos${tag ? `?tag=${encodeURIComponent(tag)}` : ''}`);
   render(await res.json());
+}
+
+async function refreshTagFilterOptions() {
+  const res = await fetch('/api/todos');
+  const todos = await res.json();
+  const tags = [...new Set(todos.flatMap((todo) => todo.tags))].sort();
+  const selected = tagFilterEl.value;
+  tagFilterEl.innerHTML = '';
+  const allOption = document.createElement('option');
+  allOption.value = '';
+  allOption.textContent = 'All';
+  tagFilterEl.append(allOption);
+  for (const tag of tags) {
+    const option = document.createElement('option');
+    option.value = tag;
+    option.textContent = tag;
+    tagFilterEl.append(option);
+  }
+  tagFilterEl.value = tags.includes(selected) ? selected : '';
+}
+
+async function refresh() {
+  await refreshTagFilterOptions();
+  await loadTodos();
 }
 
 function render(todos) {
@@ -44,23 +71,39 @@ function render(todos) {
     const span = document.createElement('span');
     span.textContent = todo.title;
 
+    const tagsEl = document.createElement('span');
+    tagsEl.className = 'tags';
+    for (const tag of todo.tags || []) {
+      const pill = document.createElement('span');
+      pill.className = 'tag-pill';
+      pill.textContent = tag;
+      tagsEl.append(pill);
+    }
+
     const deleteBtn = document.createElement('button');
     deleteBtn.textContent = '✕';
     deleteBtn.className = 'delete';
     deleteBtn.addEventListener('click', () => deleteTodo(todo.id));
 
-    li.append(checkbox, span, deleteBtn);
+    li.append(checkbox, span, tagsEl, deleteBtn);
     listEl.append(li);
   }
 }
 
-async function addTodo(title) {
+function parseTags(value) {
+  return value
+    .split(',')
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+}
+
+async function addTodo(title, tags) {
   await fetch('/api/todos', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title }),
+    body: JSON.stringify({ title, tags }),
   });
-  await loadTodos();
+  await refresh();
 }
 
 async function toggleTodo(id, completed) {
@@ -74,15 +117,19 @@ async function toggleTodo(id, completed) {
 
 async function deleteTodo(id) {
   await fetch(`/api/todos/${id}`, { method: 'DELETE' });
-  await loadTodos();
+  await refresh();
 }
 
 formEl.addEventListener('submit', (event) => {
   event.preventDefault();
   const title = inputEl.value.trim();
   if (!title) return;
+  const tags = parseTags(tagsInputEl.value);
   inputEl.value = '';
-  addTodo(title);
+  tagsInputEl.value = '';
+  addTodo(title, tags);
 });
 
-loadTodos();
+tagFilterEl.addEventListener('change', loadTodos);
+
+refresh();

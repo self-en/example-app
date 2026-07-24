@@ -52,9 +52,23 @@ async function ensureSchema() {
       id SERIAL PRIMARY KEY,
       title TEXT NOT NULL,
       completed BOOLEAN NOT NULL DEFAULT false,
+      tags TEXT[] NOT NULL DEFAULT '{}',
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )
   `);
+  // Separate ALTER so branches with a table created before tags existed pick it up too.
+  await pool.query(`ALTER TABLE todos ADD COLUMN IF NOT EXISTS tags TEXT[] NOT NULL DEFAULT '{}'`);
+}
+
+function normalizeTags(input) {
+  if (!Array.isArray(input)) return [];
+  const tags = new Set();
+  for (const raw of input) {
+    if (typeof raw !== 'string') continue;
+    const tag = raw.trim();
+    if (tag) tags.add(tag);
+  }
+  return [...tags];
 }
 
 const app = express();
@@ -73,9 +87,12 @@ app.use(express.static(path.join(__dirname, '../../frontend')));
 
 app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
 
-app.get('/api/todos', async (_req, res, next) => {
+app.get('/api/todos', async (req, res, next) => {
   try {
-    const { rows } = await pool.query('SELECT * FROM todos ORDER BY id');
+    const tag = typeof req.query.tag === 'string' ? req.query.tag.trim() : '';
+    const { rows } = tag
+      ? await pool.query('SELECT * FROM todos WHERE $1 = ANY(tags) ORDER BY id', [tag])
+      : await pool.query('SELECT * FROM todos ORDER BY id');
     res.json(rows);
   } catch (err) {
     next(err);
@@ -86,9 +103,10 @@ app.post('/api/todos', async (req, res, next) => {
   try {
     const title = (req.body?.title || '').trim();
     if (!title) return res.status(400).json({ error: 'title is required' });
+    const tags = normalizeTags(req.body?.tags);
     const { rows } = await pool.query(
-      'INSERT INTO todos (title) VALUES ($1) RETURNING *',
-      [title]
+      'INSERT INTO todos (title, tags) VALUES ($1, $2) RETURNING *',
+      [title, tags]
     );
     res.status(201).json(rows[0]);
   } catch (err) {
