@@ -34,22 +34,21 @@ async function loadTodos() {
 }
 
 async function refreshTagFilterOptions() {
-  const res = await fetch('/api/todos');
-  const todos = await res.json();
-  const tags = [...new Set(todos.flatMap((todo) => todo.tags))].sort();
+  const res = await fetch('/api/tags');
+  const tags = await res.json();
   const selected = tagFilterEl.value;
   tagFilterEl.innerHTML = '';
   const allOption = document.createElement('option');
   allOption.value = '';
   allOption.textContent = 'All';
   tagFilterEl.append(allOption);
-  for (const tag of tags) {
+  for (const { name, todo_count } of tags) {
     const option = document.createElement('option');
-    option.value = tag;
-    option.textContent = tag;
+    option.value = name;
+    option.textContent = `${name} (${todo_count})`;
     tagFilterEl.append(option);
   }
-  tagFilterEl.value = tags.includes(selected) ? selected : '';
+  tagFilterEl.value = tags.some((t) => t.name === selected) ? selected : '';
 }
 
 async function refresh() {
