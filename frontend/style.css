@@ -83,7 +83,7 @@ body {
 
 main {
   width: 100%;
-  max-width: 480px;
+  max-width: 620px;
   background: var(--surface);
   border-radius: 12px;
   padding: 1.5rem;
@@ -120,8 +120,13 @@ h1 {
   margin-bottom: 1rem;
 }
 
+#todo-form button {
+  flex-shrink: 0;
+}
+
 #todo-input {
   flex: 2;
+  min-width: 0;
   padding: 0.5rem 0.75rem;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -132,6 +137,7 @@ h1 {
 
 #tags-input {
   flex: 1;
+  min-width: 0;
   padding: 0.5rem 0.75rem;
   border: 1px solid var(--border);
   border-radius: 8px;
