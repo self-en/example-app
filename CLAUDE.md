@@ -35,6 +35,13 @@ locally against a real Postgres (see README) and hitting `/api/health`,
 `/api/todos`, and `/` (frontend). For the full deployed path (branch → CI
 build → ArgoCD sync → live preview), see self-en/infra.
 
+Claude Code's own sandbox has no `docker` binary and no Postgres reachable —
+do not attempt the `docker build`/`docker run` commands above or any other
+container-based manual test there; they will just fail with "command not
+found". Verify changes there by reading the code/diff (and `node --check` on
+edited JS files if useful); leave the actual docker-against-Postgres run to
+the user or CI.
+
 `helm lint chart` / `helm template chart --set hostname=... --set image.tag=...
 --set postgres.appPassword=... --set postgres.adminPassword=...` to check the
 chart renders before pushing — the ApplicationSet in self-en/infra needs all

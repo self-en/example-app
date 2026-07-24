@@ -17,8 +17,15 @@
     </div>
     <form id="todo-form">
       <input id="todo-input" type="text" placeholder="What needs doing?" autocomplete="off" required />
+      <input id="tags-input" type="text" placeholder="tags (comma separated)" autocomplete="off" />
       <button type="submit">Add</button>
     </form>
+    <div id="tag-filter-row">
+      <label for="tag-filter">Filter by tag</label>
+      <select id="tag-filter">
+        <option value="">All</option>
+      </select>
+    </div>
     <ul id="todo-list"></ul>
   </main>
   <script src="app.js"></script>

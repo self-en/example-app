@@ -83,7 +83,7 @@ body {
 
 main {
   width: 100%;
-  max-width: 480px;
+  max-width: 620px;
   background: var(--surface);
   border-radius: 12px;
   padding: 1.5rem;
@@ -120,14 +120,48 @@ h1 {
   margin-bottom: 1rem;
 }
 
+#todo-form button {
+  flex-shrink: 0;
+}
+
 #todo-input {
-  flex: 1;
+  flex: 2;
+  min-width: 0;
   padding: 0.5rem 0.75rem;
   border: 1px solid var(--border);
   border-radius: 8px;
   font-size: 1rem;
   background: var(--surface);
   color: var(--text);
+}
+
+#tags-input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 1rem;
+  background: var(--surface);
+  color: var(--text);
+}
+
+#tag-filter-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+#tag-filter {
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.9rem;
 }
 
 button {
@@ -165,6 +199,22 @@ button:hover {
 #todo-list li.completed span {
   text-decoration: line-through;
   color: var(--text-muted);
+}
+
+#todo-list li span.tags {
+  flex: 0 1 auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.tag-pill {
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: var(--border-subtle);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  white-space: nowrap;
 }
 
 .delete {

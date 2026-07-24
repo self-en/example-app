@@ -55,6 +55,54 @@ async function ensureSchema() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )
   `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS tags (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS todo_tags (
+      todo_id INTEGER NOT NULL REFERENCES todos(id) ON DELETE CASCADE,
+      tag_id INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+      PRIMARY KEY (todo_id, tag_id)
+    )
+  `);
+
+  // Branches whose todos table predates this table split still carry the
+  // old todos.tags TEXT[] column; migrate its data into tags/todo_tags once
+  // and drop it. Already-migrated/new branches have no such column, so this
+  // is a no-op for them.
+  const { rows } = await pool.query(`
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'todos' AND column_name = 'tags'
+  `);
+  if (rows.length) {
+    await pool.query(`
+      INSERT INTO tags (name)
+      SELECT DISTINCT unnest(tags) FROM todos
+      ON CONFLICT (name) DO NOTHING
+    `);
+    await pool.query(`
+      INSERT INTO todo_tags (todo_id, tag_id)
+      SELECT todos.id, tags.id
+      FROM todos, unnest(todos.tags) AS tag_name
+      JOIN tags ON tags.name = tag_name
+      ON CONFLICT DO NOTHING
+    `);
+    await pool.query('ALTER TABLE todos DROP COLUMN tags');
+  }
+}
+
+function normalizeTags(input) {
+  if (!Array.isArray(input)) return [];
+  const tags = new Set();
+  for (const raw of input) {
+    if (typeof raw !== 'string') continue;
+    const tag = raw.trim();
+    if (tag) tags.add(tag);
+  }
+  return [...tags];
 }
 
 const app = express();
@@ -73,9 +121,41 @@ app.use(express.static(path.join(__dirname, '../../frontend')));
 
 app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
 
-app.get('/api/todos', async (_req, res, next) => {
+app.get('/api/todos', async (req, res, next) => {
   try {
-    const { rows } = await pool.query('SELECT * FROM todos ORDER BY id');
+    const tag = typeof req.query.tag === 'string' ? req.query.tag.trim() : '';
+    const { rows } = await pool.query(
+      `
+      SELECT t.id, t.title, t.completed, t.created_at,
+             COALESCE(array_agg(tg.name ORDER BY tg.name) FILTER (WHERE tg.name IS NOT NULL), '{}') AS tags
+      FROM todos t
+      LEFT JOIN todo_tags tt ON tt.todo_id = t.id
+      LEFT JOIN tags tg ON tg.id = tt.tag_id
+      WHERE $1 = '' OR t.id IN (
+        SELECT todo_id FROM todo_tags
+        JOIN tags ON tags.id = todo_tags.tag_id
+        WHERE tags.name = $1
+      )
+      GROUP BY t.id
+      ORDER BY t.id
+      `,
+      [tag]
+    );
+    res.json(rows);
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.get('/api/tags', async (_req, res, next) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT tg.name, COUNT(tt.todo_id)::int AS todo_count
+      FROM tags tg
+      LEFT JOIN todo_tags tt ON tt.tag_id = tg.id
+      GROUP BY tg.name
+      ORDER BY tg.name
+    `);
     res.json(rows);
   } catch (err) {
     next(err);
@@ -86,11 +166,31 @@ app.post('/api/todos', async (req, res, next) => {
   try {
     const title = (req.body?.title || '').trim();
     if (!title) return res.status(400).json({ error: 'title is required' });
-    const { rows } = await pool.query(
-      'INSERT INTO todos (title) VALUES ($1) RETURNING *',
-      [title]
-    );
-    res.status(201).json(rows[0]);
+    const tags = normalizeTags(req.body?.tags);
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const { rows } = await client.query(
+        'INSERT INTO todos (title) VALUES ($1) RETURNING *',
+        [title]
+      );
+      const todo = rows[0];
+      for (const tagName of tags) {
+        const { rows: tagRows } = await client.query(
+          'INSERT INTO tags (name) VALUES ($1) ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name RETURNING id',
+          [tagName]
+        );
+        await client.query('INSERT INTO todo_tags (todo_id, tag_id) VALUES ($1, $2)', [todo.id, tagRows[0].id]);
+      }
+      await client.query('COMMIT');
+      res.status(201).json({ ...todo, tags });
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
   } catch (err) {
     next(err);
   }
