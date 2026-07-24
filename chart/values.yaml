@@ -72,3 +72,8 @@ imagePullSecret:
 # pattern as postgres.* above.
 otel:
   endpoint: ""
+
+# Injected per-branch by the ApplicationSet, same "unset by default, wired
+# by helm parameters" pattern as postgres.* and otel.endpoint above. Empty by
+# default so the app repo never needs to set this manually.
+claudeCodeOAuthToken: ""
